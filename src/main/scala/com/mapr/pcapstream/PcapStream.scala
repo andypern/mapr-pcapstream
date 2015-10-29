@@ -14,12 +14,25 @@ import org.apache.hadoop.mapred.JobConf
 import com.mapr.sample.WholeFileInputFormat
 import edu.gatech.sjpcap._
 
+
+
+/* andyp - 2015.10.27 : adding some functionality to dump to a maprDB table. */
+
+import org.apache.hadoop.hbase.HBaseConfiguration
+import org.apache.hadoop.hbase.client.Put
+import org.apache.hadoop.hbase.io.ImmutableBytesWritable
+import org.apache.hadoop.hbase.mapred.TableOutputFormat
+import org.apache.hadoop.hbase.util.Bytes
+
+
 object PcapStream {
   case class FlowData(timestampMillis: Long, srcIP: String, dstIP: String, srcPort: Integer, dstPort: Integer, protocol: String, length: Integer, captureFilename: String)
+
 
   def main(args: Array[String]) {
     val inputPath = args(0)
     val outputPath = args(1)
+    val outputTable = args(2)
 
     val conf = new SparkConf().setAppName("PCAP Flow Parser")
     val ssc = new StreamingContext(conf, Seconds(20))
@@ -36,6 +49,16 @@ object PcapStream {
     FileInputFormat.setInputPaths(jobConf, input)
 
     val pcapBytes = ssc.fileStream[NullWritable, BytesWritable, WholeFileInputFormat](directory = input)
+
+    // set up HBase Table configuration
+
+    val conf = HBaseConfiguration.create()
+    conf.set(TableOutputFormat.OUTPUT_TABLE, outputTable)
+    val jobConfig: JobConf = new JobConf(conf, this.getClass)
+    jobConfig.set("mapreduce.output.fileoutputformat.outputdir", "/user/user01/out")
+    jobConfig.setOutputFormat(classOf[TableOutputFormat])
+    jobConfig.set(TableOutputFormat.OUTPUT_TABLE, outputTable)
+
 
     val packets = pcapBytes.flatMap {
         case (filename, packet) =>
